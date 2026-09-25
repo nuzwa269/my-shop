@@ -21,9 +21,7 @@ Known remaining issue: older purchases without a receipt snapshot show a short
 details-unavailable message because they lack the retained item snapshot required
 to render the purchase detail. Android physical-device runtime/secure-storage
 acceptance remains pending as recorded below. No merge into `main` is authorized.
-# Project state
-
-## Current checkpoint - client-demo finalization
+ Current checkpoint - client-demo finalization
 
 Branch: `feature/client-demo-finalization`. Schema remains **3**; no released
 migrations, Phase 2, inventory or trade posting were rebuilt.
