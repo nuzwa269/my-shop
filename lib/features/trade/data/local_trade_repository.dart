@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import '../../../core/money/money.dart';
 import '../../../core/permissions/permissions.dart';
-import '../../../core/numeric/scaled_integer.dart';
 import '../../../core/units/quantity.dart';
 import '../../../core/units/unit_conversion_service.dart';
 import '../../../core/validation/validation.dart';
@@ -190,10 +189,7 @@ class LocalTradeRepository {
             CatalogItem(
               row,
               units.map(UnitConversionService.fromRow).toList(),
-              ScaledInteger.format(
-                price['amount_ticks'] as int,
-                decimals: c.minorDigits + 4,
-              ),
+              Money.formatUnitPrice(price['amount_ticks'] as int, c),
               price['unit_code'] as String,
             ),
           );
@@ -217,6 +213,22 @@ class LocalTradeRepository {
       [id, user.shopId],
     );
     if (rows.isEmpty) throw const ValidationException('Document not found.');
+    if (kind == TradeKind.purchase) {
+      // Display-only metadata; never replace the stored document number.
+      final details = await tx.select(
+        '''
+        SELECT s.phone AS supplier_phone, s.address AS supplier_address,
+          (SELECT COUNT(*) FROM purchases p WHERE p.shop_id=d.shop_id
+            AND (p.created_at<d.created_at OR
+              (p.created_at=d.created_at AND p.id<=d.id))) AS display_sequence
+        FROM purchases d LEFT JOIN suppliers s
+          ON s.id=d.supplier_id AND s.shop_id=d.shop_id
+        WHERE d.id=? AND d.shop_id=?
+      ''',
+        [id, user.shopId],
+      );
+      return {...rows.single, ...details.single};
+    }
     return rows.single;
   });
 

@@ -57,6 +57,21 @@ void main() {
       TradeKind.purchase,
       input(TradeKind.purchase, paid: '2000'),
     );
+    final storedPurchase = (await store.db.select(
+      'SELECT * FROM purchases WHERE id=?',
+      [purchase],
+    )).single;
+    final purchaseDetail = await trade.document(TradeKind.purchase, purchase);
+    expect(purchaseDetail['display_sequence'], 1);
+    for (final entry in storedPurchase.entries) {
+      expect(purchaseDetail[entry.key], entry.value);
+    }
+    expect(
+      (await store.db.select('SELECT * FROM purchases WHERE id=?', [
+        purchase,
+      ])).single,
+      storedPurchase,
+    );
     expect(await stock(), 50000000000);
     expect(
       (await ledger(PartyKind.supplier)).map((r) => r['amount_delta_minor']),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/money/money.dart';
 import '../../../core/units/quantity.dart';
+import '../../../core/units/unit_conversion_service.dart';
 import '../../../services/repository_providers.dart';
 import '../../../shared/widgets/form_support.dart';
 import '../../auth/application/session_provider.dart';
@@ -17,13 +18,29 @@ class OpeningStockScreen extends ConsumerStatefulWidget {
 }
 
 class _OpeningStockScreenState extends ConsumerState<OpeningStockScreen> {
-  final quantity = TextEditingController(),
-      value = TextEditingController(),
-      reason = TextEditingController();
+  final quantity = TextEditingController(), value = TextEditingController();
   late String unit;
   DateTime occurred = DateTime.now();
   bool busy = false;
   String? error;
+  List<UnitConversion> get _uniqueUnits {
+    final byCode = <String, UnitConversion>{};
+    for (final conversion in widget.details.units) {
+      byCode.putIfAbsent(
+        conversion.unitCode.trim().toLowerCase(),
+        () => conversion,
+      );
+    }
+    return byCode.values.toList();
+  }
+
+  String get _selectedUnit {
+    final selected = unit.trim().toLowerCase();
+    return _uniqueUnits.any((item) => item.unitCode == selected)
+        ? selected
+        : _uniqueUnits.first.unitCode;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -37,20 +54,20 @@ class _OpeningStockScreenState extends ConsumerState<OpeningStockScreen> {
       }
       occurred = DateTime.fromMillisecondsSinceEpoch(previous.occurredAt)
           .toLocal();
-      final currency = ref.read(sessionProvider).asData!.value.shop!.currency;
-      if (previous.valueMinor != null) {
-        value.text = Money.format(previous.valueMinor!, currency);
-      }
-    } else {
-      reason.text = 'Initial stock count';
     }
+    unit = _selectedUnit;
+    quantity.addListener(_refreshEstimate);
+  }
+
+  void _refreshEstimate() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    quantity.removeListener(_refreshEstimate);
     quantity.dispose();
     value.dispose();
-    reason.dispose();
     super.dispose();
   }
 
@@ -65,8 +82,12 @@ class _OpeningStockScreenState extends ConsumerState<OpeningStockScreen> {
         OpeningInput(
           quantity: quantity.text,
           unit: unit,
-          totalValue: value.text,
-          reason: reason.text,
+          totalValue: value.text.trim().isNotEmpty
+              ? value.text
+              : _estimatedOpeningValue ?? _previousOpeningValue ?? '',
+          reason: widget.details.opening == null
+              ? 'Initial stock count'
+              : 'Opening stock correction',
           occurredAt: occurred.toUtc().millisecondsSinceEpoch,
         ),
         expectedRevision: widget.details.product.revision,
@@ -80,6 +101,46 @@ class _OpeningStockScreenState extends ConsumerState<OpeningStockScreen> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  ({int minorUnits, String display})? get _openingEstimate {
+    final price = widget.details.purchasePrice;
+    if (price == null || quantity.text.trim().isEmpty) return null;
+    try {
+      final conversion = _uniqueUnits.firstWhere(
+        (item) => item.unitCode.trim().toLowerCase() == unit,
+      );
+      final snapshot = UnitConversionService.snapshot(
+        quantity.text,
+        conversion,
+      );
+      final total = UnitConversionService.priceTotal(
+        priceTicks: price.amountTicks,
+        pricingConversion: price.conversion,
+        quantity: snapshot,
+      );
+      return (
+        minorUnits: total,
+        display:
+            '${price.currency.code} ${Money.format(total, price.currency)}',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? get _estimatedOpeningValue {
+    final estimate = _openingEstimate;
+    if (estimate == null) return null;
+    final price = widget.details.purchasePrice!;
+    return Money.format(estimate.minorUnits, price.currency);
+  }
+
+  String? get _previousOpeningValue {
+    final previous = widget.details.opening;
+    final currency = ref.read(sessionProvider).asData?.value.shop?.currency;
+    if (previous?.valueMinor == null || currency == null) return null;
+    return Money.format(previous!.valueMinor!, currency);
   }
 
   @override
@@ -104,37 +165,27 @@ class _OpeningStockScreenState extends ConsumerState<OpeningStockScreen> {
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 16),
-              if (widget.details.opening != null)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 16),
-                  child: Text(
-                    'Enter the corrected total opening quantity, not today’s stock. Saving reverses the previous opening and records a replacement. Current unit factors apply.',
-                  ),
-                ),
+
               EntryField(quantity, 'Opening quantity', numeric: true),
               DropdownButtonFormField<String>(
-                initialValue: unit,
+                initialValue: _selectedUnit,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Unit'),
-                items: widget.details.units
+                items: _uniqueUnits
+                    .map((u) => u.unitCode.trim().toLowerCase())
+                    .toSet()
                     .map(
-                      (u) => DropdownMenuItem(
-                        value: u.unitCode,
-                        child: Text(u.unitCode),
-                      ),
+                      (code) =>
+                          DropdownMenuItem(value: code, child: Text(code)),
                     )
                     .toList(),
                 onChanged: (v) => setState(() => unit = v!),
               ),
-              const SizedBox(height: 16),
-              EntryField(
-                value,
-                'Total opening value (optional)',
-                numeric: true,
-                hint:
-                    'Value of all opening stock; no costing method is assumed.',
-              ),
-              EntryField(reason, 'Reason / audit note'),
+              if (_openingEstimate case final estimate?)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text('Estimated opening value: ${estimate.display}'),
+                ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Opening date'),
@@ -149,6 +200,18 @@ class _OpeningStockScreenState extends ConsumerState<OpeningStockScreen> {
                   );
                   if (date != null && mounted) setState(() => occurred = date);
                 },
+              ),
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: const Text('Advanced options'),
+                children: [
+                  EntryField(
+                    value,
+                    'Opening value override (optional)',
+                    numeric: true,
+                    hint: 'Leave blank to use the estimate, if available.',
+                  ),
+                ],
               ),
               ErrorNotice(error),
               FilledButton(

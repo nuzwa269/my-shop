@@ -10,6 +10,10 @@ import 'package:shop_manager/features/auth/data/local_staff_repository.dart';
 import 'package:shop_manager/database/database_provider.dart';
 import 'package:shop_manager/features/auth/application/session_provider.dart';
 import 'package:shop_manager/features/products/application/product_providers.dart';
+import 'package:shop_manager/features/products/domain/product.dart';
+import 'package:shop_manager/features/products/presentation/product_editor_screen.dart';
+import 'package:shop_manager/features/products/presentation/unit_configuration_screen.dart';
+import 'package:shop_manager/core/units/quantity.dart';
 import 'package:shop_manager/services/repository_providers.dart';
 import 'package:shop_manager/features/trade/presentation/trade_screens.dart';
 import 'package:shop_manager/features/trade/domain/trade.dart';
@@ -134,7 +138,23 @@ void main() {
     await settleIo(tester);
     await tester.tap(find.text('Add'));
     await tester.pumpAndSettle();
-    await enter(tester, 'Product / variety name', '1121 Sella');
+    expect(find.text('Advanced options'), findsOneWidget);
+    expect(find.text('SKU / code (optional)'), findsNothing);
+    expect(find.text('Canonical base unit: gram'), findsNothing);
+    await enter(tester, 'Product name', '1121 Sella');
+    await tester.tap(find.byType(DropdownButtonFormField<String>).at(3));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bag').last);
+    await tester.pumpAndSettle();
+    expect(find.text('1 Bag contains how many Kg?'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, '50');
+    await tester.tap(find.text('Save unit'));
+    await tester.pumpAndSettle();
+    await enter(tester, 'Purchase price (PKR)', '2000.000000');
+    await enter(tester, 'Sale price (PKR)', '300.000000');
+    await enter(tester, 'Low stock alert (optional)', '20');
+    tester.testTextInput.hide();
+    await tester.pump();
     await tester.scrollUntilVisible(
       find.text('Save product'),
       300,
@@ -145,6 +165,23 @@ void main() {
     expect(find.text('Product details'), findsOneWidget);
     expect(find.text('1121 Sella'), findsOneWidget);
     expect(find.text('Purchase price'), findsOneWidget);
+    expect(find.textContaining('PKR 2,000 per kg'), findsOneWidget);
+    expect(find.textContaining('PKR 300 per kg'), findsOneWidget);
+    expect(find.text('Stock: 0 kg'), findsOneWidget);
+    expect(find.text('Minimum alert: 20 kg'), findsOneWidget);
+    expect(find.textContaining('Primary display unit:'), findsNothing);
+    expect(find.textContaining('Default sale unit:'), findsNothing);
+    expect(find.textContaining('1 kg = 1000 gram'), findsNothing);
+    await tester.tap(find.text('Edit product'));
+    await tester.pumpAndSettle();
+    final priceInputs = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .map((field) => field.controller?.text)
+        .toList();
+    expect(priceInputs, contains('2000'));
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1 kg = 1000 gram'), findsNothing);
     await tester.scrollUntilVisible(
       find.text('Enter opening stock'),
       200,
@@ -152,7 +189,16 @@ void main() {
     );
     await tester.tap(find.text('Enter opening stock'));
     await tester.pumpAndSettle();
+    expect(find.text('Reason / audit note'), findsNothing);
+    expect(find.text('Opening value override (optional)'), findsNothing);
+    expect(find.text('Advanced options'), findsOneWidget);
+    expect(
+      find.text(DateTime.now().toLocal().toString().split(' ').first),
+      findsOneWidget,
+    );
     await enter(tester, 'Opening quantity', '2');
+    await tester.pump();
+    expect(find.text('Estimated opening value: PKR 4000'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Save opening stock'),
       200,
@@ -162,7 +208,86 @@ void main() {
     await settleIo(tester);
     final products = await tester.runAsync(() => store.products.list());
     expect(products!.single.stockScaled, 2000000000);
+    final saved = await tester.runAsync(
+      () => store.products.details(products.single.id),
+    );
+    expect(saved!.opening!.valueMinor, 400000);
   });
+  testWidgets(
+    'editing tolerates duplicate kg unit rows and unique menu values',
+    (tester) async {
+      final store = await tester.runAsync(() => TestStore.open());
+      final container = await mount(tester, store!);
+      addTearDown(() async {
+        container.dispose();
+        await store.close();
+      });
+      final id = await tester.runAsync(
+        () => store.products.save(TestStore.product()),
+      );
+      final existing = await tester.runAsync(() => store.products.details(id!));
+      final duplicateKg = ProductDetails(
+        product: existing!.product,
+        units: [...existing.units, UnitConversion.kilograms()],
+        prices: existing.prices,
+        purchasePrice: existing.purchasePrice,
+        salePrice: existing.salePrice,
+        opening: existing.opening,
+      );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(home: ProductEditorScreen(initial: duplicateKg)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Edit product'), findsOneWidget);
+      final dropdowns = tester.widgetList<DropdownButtonFormField<String>>(
+        find.byType(DropdownButtonFormField<String>),
+      );
+      expect(dropdowns, isNotEmpty);
+      await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('unit-option:Purchase price (PKR):kg')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'unit settings show compact whole ratios and preserve needed fractions',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: UnitConfigurationScreen(
+            baseUnit: 'gram',
+            requiredUnits: const {},
+            units: [
+              UnitConversion.kilograms(),
+              UnitConversion(
+                unitCode: 'bag',
+                baseUnit: 'gram',
+                numerator: 50000,
+                denominator: 1,
+              ),
+              UnitConversion(
+                unitCode: 'small bag',
+                baseUnit: 'gram',
+                numerator: 1,
+                denominator: 2,
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(find.text('1 kg = 1000 gram'), findsOneWidget);
+      expect(find.text('1 bag = 50000 gram'), findsOneWidget);
+      expect(find.text('1 small bag = 1/2 gram'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'configured shop restores login gate and renders narrow large-text layout',
     (tester) async {
@@ -276,7 +401,7 @@ void main() {
             .widget<TextField>(find.widgetWithText(TextField, 'Paid amount'))
             .controller!
             .text,
-        '250.00',
+        '250',
       );
       await tester.scrollUntilVisible(
         find.text('Post sale'),
@@ -288,6 +413,7 @@ void main() {
       await tester.runAsync(() => tester.tap(find.text('Confirm')));
       await settleIo(tester);
       expect(find.text('Receipt / Invoice'), findsOneWidget);
+      expect(find.textContaining('260.000000'), findsNothing);
       final rows = await tester.runAsync(
         () => LocalTradeRepository(
           store.db,

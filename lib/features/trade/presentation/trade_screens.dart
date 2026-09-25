@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/money/money.dart';
-import '../../../core/numeric/scaled_integer.dart';
 import '../../../core/units/quantity.dart';
 import '../../../shared/widgets/form_support.dart';
 import '../../auth/application/session_provider.dart';
 import '../application/trade_providers.dart';
 import '../domain/trade.dart';
 import 'trade_widgets.dart';
+import 'purchase_detail_content.dart';
 
 class TradeListScreen extends ConsumerWidget {
   const TradeListScreen(this.kind, {super.key});
@@ -465,11 +465,16 @@ class TradeDetail extends ConsumerWidget {
       data: (row) {
         if (row['receipt_json'] == null) {
           return const Center(
-            child: Text('This legacy document has no receipt snapshot.'),
+            child: Text(
+              'Details are unavailable for this older purchase or sale.',
+            ),
           );
         }
         final receipt =
             jsonDecode(row['receipt_json'] as String) as Map<String, dynamic>;
+        if (kind == TradeKind.purchase) {
+          return PurchaseDetailContent(receipt: receipt, metadata: row);
+        }
         final c = Currency(
           receipt['currency_code'] as String,
           minorDigits: receipt['currency_minor_digits'] as int,
@@ -500,7 +505,7 @@ class TradeDetail extends ConsumerWidget {
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     Text(
-                      '${Quantity.format(item['original_quantity_scaled'] as int)} ${item['original_unit_code']} × ${ScaledInteger.format(item['unit_price_ticks'] as int, decimals: c.minorDigits + 4)}',
+                      '${Quantity.format(item['original_quantity_scaled'] as int)} ${item['original_unit_code']} × ${Money.formatUnitPrice(item['unit_price_ticks'] as int, c)}',
                     ),
                     Text(moneyText(item['line_total_minor'] as int, c)),
                   ],

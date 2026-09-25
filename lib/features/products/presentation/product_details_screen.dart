@@ -17,12 +17,44 @@ class ProductDetailsScreen extends ConsumerWidget {
   final String id;
   String priceLabel(PriceSnapshot? price) {
     if (price == null) return 'Not configured';
-    final amount = ScaledInteger.format(
-      price.amountTicks,
-      decimals: price.currency.minorDigits + 4,
+    final raw = Money.formatUnitPrice(price.amountTicks, price.currency);
+    final parts = raw.split('.');
+    final whole = parts.first.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => ',',
     );
-    return '${price.currency.code} $amount per ${price.conversion.unitCode}\n'
-        '1 ${price.conversion.unitCode} = ${price.conversion.numerator}/${price.conversion.denominator} ${price.conversion.baseUnit}';
+    final amount = parts.length == 1 ? whole : '$whole.${parts.last}';
+    return '${price.currency.code} $amount per ${price.conversion.unitCode}';
+  }
+
+  String stockQuantity(
+    Product product,
+    List<UnitConversion> units,
+    int scaled,
+  ) {
+    UnitConversion? displayConversion;
+    for (final conversion in units) {
+      if (conversion.unitCode == product.primaryUnit) {
+        displayConversion = conversion;
+        break;
+      }
+    }
+    if (displayConversion == null) {
+      for (final conversion in units) {
+        if (conversion.unitCode == product.baseUnit) {
+          displayConversion = conversion;
+          break;
+        }
+      }
+    }
+    if (displayConversion == null) {
+      return '${Quantity.formatDisplay(scaled)} ${product.baseUnit}';
+    }
+    final displayScaled = ScaledInteger.roundRatio(
+      BigInt.from(scaled) * BigInt.from(displayConversion.denominator),
+      BigInt.from(displayConversion.numerator),
+    );
+    return '${Quantity.formatDisplay(displayScaled)} ${displayConversion.unitCode}';
   }
 
   @override
@@ -57,14 +89,11 @@ class ProductDetailsScreen extends ConsumerWidget {
                   ),
                 const Divider(height: 32),
                 Text(
-                  'Stock: ${Quantity.format(p.stockScaled)} ${p.baseUnit}',
+                  'Stock: ${stockQuantity(p, details.units, p.stockScaled)}',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 Text(
-                  'Minimum alert: ${Quantity.format(p.minimumStockScaled)} ${p.baseUnit}',
-                ),
-                Text(
-                  'Primary display unit: ${p.primaryUnit} · Default sale unit: ${p.defaultSaleUnit}',
+                  'Minimum alert: ${stockQuantity(p, details.units, p.minimumStockScaled)}',
                 ),
                 if (p.stockScaled < p.minimumStockScaled)
                   const Text('Below minimum stock'),
@@ -155,10 +184,7 @@ class ProductDetailsScreen extends ConsumerWidget {
                 ),
                 if (details.opening case final opening?) ...[
                   Text(
-                    '${Quantity.format(opening.quantity.originalQuantityScaled)} ${opening.quantity.conversion.unitCode}',
-                  ),
-                  Text(
-                    'Normalized: ${Quantity.format(opening.quantity.baseQuantityScaled)} ${opening.quantity.conversion.baseUnit}',
+                    '${Quantity.formatDisplay(opening.quantity.originalQuantityScaled)} ${opening.quantity.conversion.unitCode}',
                   ),
                   Text(
                     'Total opening value: ${opening.valueMinor == null ? "Not supplied" : "${currency.code} ${Money.format(opening.valueMinor!, currency)}"}',

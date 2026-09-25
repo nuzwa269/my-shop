@@ -61,7 +61,7 @@ class _UnitConfigurationScreenState extends State<UnitConfigurationScreen> {
               child: ListTile(
                 title: Text(unit.unitCode),
                 subtitle: Text(
-                  '1 ${unit.unitCode} = ${unit.numerator}/${unit.denominator} ${unit.baseUnit}',
+                  '1 ${unit.unitCode} = ${unit.displayFactor} ${unit.baseUnit}',
                 ),
                 trailing: Wrap(
                   children: [

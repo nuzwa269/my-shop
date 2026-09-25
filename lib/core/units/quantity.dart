@@ -5,6 +5,14 @@ abstract final class Quantity {
   static const scale = 1000000;
   static int parse(String decimal) => ScaledInteger.parse(decimal, decimals: 6);
   static String format(int scaled) => ScaledInteger.format(scaled, decimals: 6);
+  static String formatDisplay(int scaled) {
+    final value = format(scaled);
+    if (!value.contains('.')) return value;
+    final compact = value
+        .replaceFirst(RegExp(r'0+$'), '')
+        .replaceFirst(RegExp(r'\.$'), '');
+    return compact;
+  }
 }
 
 class UnitConversion {
@@ -53,6 +61,10 @@ class UnitConversion {
   /// Base units per original unit, represented as an exact rational factor.
   final int numerator;
   final int denominator;
+
+  /// Compact exact factor for user-facing text; persisted factors stay rational.
+  String get displayFactor =>
+      denominator == 1 ? '$numerator' : '$numerator/$denominator';
 
   /// Reject sub-resolution quantities instead of silently losing physical stock.
   int normalize(int originalQuantityScaled) {

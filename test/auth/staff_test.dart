@@ -43,7 +43,7 @@ void main() {
     final trade = LocalTradeRepository(store.db, store.auth);
     final customer = await trade.saveParty(PartyKind.customer, name: 'Buyer');
     final catalog = await trade.catalog(TradeKind.sale);
-    expect(catalog.single.rate, '260.000000');
+    expect(catalog.single.rate, '260');
     final sale = await trade.post(
       TradeKind.sale,
       TradeInput(

@@ -1,4 +1,27 @@
-﻿# Project state
+# Project state
+
+## Current checkpoint - purchase details presentation
+
+Updated: 2026-09-26. Branch: `feature/client-demo-finalization`. Schema remains
+**3**. Purchase details now use a display-only sequential `PUR-0001` reference,
+friendly date, supplier contact details, compact quantities, labeled rates and line
+amounts, grouped money, and a concise summary. Existing numeric and money formatters
+are reused. A read-only detail query supplies the display sequence and supplier
+contact fields; stored purchase numbers, receipt snapshots, transaction values,
+posting, payments, ledgers, and schema are unchanged. Sale presentation remains
+separate. The old client-demo checkpoint below describes the completed baseline.
+
+Verification for this update: `flutter analyze` passed. The purchase detail widget
+tests, trade repository tests (including stored-row preservation), precision tests,
+and full widget suite passed (**37 tests** in the selected run). `git diff --check`
+passed. The running app needs a **Hot Restart** to reload cached purchase detail
+data and show the additional display fields.
+
+Known remaining issue: older purchases without a receipt snapshot show a short
+details-unavailable message because they lack the retained item snapshot required
+to render the purchase detail. Android physical-device runtime/secure-storage
+acceptance remains pending as recorded below. No merge into `main` is authorized.
+# Project state
 
 ## Current checkpoint - client-demo finalization
 

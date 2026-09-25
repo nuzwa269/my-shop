@@ -21,8 +21,45 @@ abstract final class Money {
   static int parse(String decimal, Currency currency) =>
       ScaledInteger.parse(decimal, decimals: currency.minorDigits);
 
-  static String format(int minorUnits, Currency currency) =>
-      ScaledInteger.format(minorUnits, decimals: currency.minorDigits);
+  /// Formats a financial amount without a redundant all-zero fraction.
+  /// Non-zero PKR amounts retain both currency digits, e.g. 300.50.
+  static String format(int minorUnits, Currency currency) {
+    final value = ScaledInteger.format(
+      minorUnits,
+      decimals: currency.minorDigits,
+    );
+    if (currency.minorDigits == 0 || minorUnits % _minorScale(currency) == 0) {
+      return value.split('.').first;
+    }
+    return value;
+  }
+
+  /// Formats a per-unit price or editable price value, trimming insignificant
+  /// digits beyond the currency precision without changing its stored ticks.
+  static String formatUnitPrice(int priceTicks, Currency currency) =>
+      _trimFractionalZeros(
+        ScaledInteger.format(priceTicks, decimals: currency.minorDigits + 4),
+      );
+
+  static int _minorScale(Currency currency) => switch (currency.minorDigits) {
+    0 => 1,
+    1 => 10,
+    2 => 100,
+    3 => 1000,
+    4 => 10000,
+    _ => throw ArgumentError.value(currency.minorDigits, 'minorDigits'),
+  };
+
+  static String _trimFractionalZeros(String value) {
+    final point = value.indexOf('.');
+    if (point < 0) return value;
+    final fraction = value
+        .substring(point + 1)
+        .replaceFirst(RegExp(r'0+$'), '');
+    return fraction.isEmpty
+        ? value.substring(0, point)
+        : '${value.substring(0, point)}.$fraction';
+  }
 
   static int parseUnitPrice(String decimal, Currency currency) =>
       ScaledInteger.parse(decimal, decimals: currency.minorDigits + 4);
