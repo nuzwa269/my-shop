@@ -5,6 +5,14 @@ import '../../../core/validation/validation.dart';
 
 typedef DataRow = Map<String, Object?>;
 
+class KhataAccount {
+  const KhataAccount(this.party, this.currency, this.entries, this.balance);
+  final DataRow party;
+  final Currency currency;
+  final List<DataRow> entries;
+  final int balance;
+}
+
 enum PartyKind {
   supplier,
   customer;

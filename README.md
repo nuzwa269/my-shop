@@ -1,4 +1,4 @@
-﻿# Shop Manager - Phase 2
+# Shop Manager - Client Demo MVP
 
 Android-first, offline-first Flutter shop setup and product management. Phase 2
 includes local owner authentication, products, explicit unit conversions, price
@@ -28,10 +28,12 @@ Startup opens SQLite, applies additive migrations and offers non-destructive ret
 - First launch: create shop name, owner, category, currency/precision, country,
   optional phone/address, and a local owner username/password or PIN.
 - Setup writes shop, owner credentials, completion marker and audit atomically.
-  There is no seeded data and no owner/cashier preview bypass.
+  No sample data loads automatically and there is no owner/cashier preview bypass.
 - Owner login, persistent 12-hour session, expiration and logout. Five failed
   attempts impose a one-minute lockout. Password/PIN recovery is not available.
-- Dashboard shows shop identity and active product count.
+- Dashboard shows shop identity, daily posted totals, outstanding party balances,
+  active/low/out-of-stock counts and working module shortcuts. Cashiers see only
+  their own daily sales and permitted shortcuts. Currency scales remain separate.
 - Products: create, view, edit, search by name/SKU, filter active/inactive/all,
   deactivate and reactivate. Products are retained rather than deleted.
 - Product configuration: variety name, optional SKU/description, weight or custom
@@ -50,13 +52,26 @@ sales must be fully paid. Posted documents cannot be edited or cancelled in this
 
 Inventory shows exact stock balances, low/out-of-stock filters, name/SKU search,
 inactive products and posted movement history with original quantities/units.
-Settings, Khata browsing, Expenses and Reports remain placeholders. Shop
-profile editing, cashier accounts and general stock adjustments are not implemented.
+Customer and supplier khata show chronological entries and running balances per
+currency/precision. Cash collection/supplier payments append immutable payment and
+ledger records atomically; overpayment and stale balances are rejected. They settle
+the account, without reallocating or rewriting issued invoices.
+
+Expenses post a cash expense, linked payment and audit together. Settings provides
+owner-managed cashier creation/deactivation/reactivation and optional demo data.
+Cashiers can sell, view receipts, manage customers and collect customer payments;
+owner-only modules and their repositories reject cashier access. All logins use
+the same salted password hashing, session expiration and lockout rules.
+
+Demo loading requires an empty shop and explicit owner confirmation. It is atomic,
+idempotent and marked on the dashboard. Existing data is never cleared or mixed
+with samples. No default staff credentials are created. See DEMO_WALKTHROUGH.md.
+Shop profile editing, general stock adjustments and reports remain unimplemented.
 
 ## Architecture
 
 Widgets -> Riverpod state -> feature repositories -> DatabaseConnection -> SQLite.
-Widgets do not issue SQL. Repository operations authorize the current owner and use
+Widgets do not issue SQL. Repository operations authorize the current role and use
 transaction-scoped SQL sessions for atomic changes. Revisions reject stale edits.
 
 | Location | Responsibility |
@@ -70,6 +85,9 @@ transaction-scoped SQL sessions for atomic changes. Revisions reject stale edits
 | lib/features/settings/ | Atomic first-run setup and shop profile reads |
 | lib/features/products/ | Product repository, prices, units, opening stock and screens |
 | lib/features/trade/ | Contacts, purchase/sale posting, providers and receipts |
+| lib/features/ledger/ | Customer/supplier khata and account payment screens |
+| lib/features/expenses/ | Atomic cash expenses and linked payment records |
+| lib/features/demo/ | Explicit, empty-shop-only transactional demo seed |
 | lib/features/dashboard/ | Shop identity and active product count |
 | lib/shared/widgets/ | Guarded module shell, form fields, error rendering, placeholders |
 | test/auth/ | Password algorithm, setup, login, lockout, expiration, authorization |
@@ -88,7 +106,9 @@ desktop application target.
 
 Database: shop_manager.sqlite in the platform app database directory, schema
 version **3**. Versions 1 and 2 remain unchanged; v2_shop_products.dart adds Phase 2 fields,
-owner_credentials, local_sessions and product_prices. v3_mvp.dart adds walk-in
+owner_credentials, local_sessions and product_prices. The historical
+owner_credentials table now also holds restricted cashier credentials; no migration
+or owner credential rewrite is needed. v3_mvp.dart adds walk-in
 customer and document/receipt snapshots. There are 20 application
 tables plus the stock_balances view. Foreign keys are enabled on each connection;
 newer database versions are rejected without destructive downgrade.
@@ -138,13 +158,13 @@ separately designed migration/recovery path; setup will not overwrite that data.
 
 ## Boundaries and remaining work
 
-The MVP trade slice is implemented and host-tested. Standalone later payments,
-khata browsing, expenses, reports, profit, receipt printing/export, tax, costing and
-document cancellation remain future work. Payments at issue and party-ledger
-entries post atomically with stock and audit records. Sales reject negative stock.
+The client-demo modules are implemented. Reports, profit, receipt printing/export,
+tax, costing and document cancellation remain outside this demo. Payments at issue
+and party-ledger entries post atomically with stock and audit records. Later cash
+payments settle accounts without document allocation. Sales reject negative stock.
 Cancellation flags alone do not reverse balances.
 
 No cloud sync, Firebase, barcode scanning, e-commerce, payroll, online ordering,
-backup/export, staff administration, account recovery or desktop runner exists.
+backup/export, account recovery or desktop runner exists.
 The application ID com.example.shop_manager and debug release signing are scaffold
 settings, not a production distribution configuration.

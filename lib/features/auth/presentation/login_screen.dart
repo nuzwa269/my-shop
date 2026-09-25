@@ -40,7 +40,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Owner login')),
+    appBar: AppBar(title: const Text('Shop login')),
     body: SafeArea(
       child: Center(
         child: SingleChildScrollView(

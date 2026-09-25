@@ -5,6 +5,7 @@ import '../../../shared/widgets/form_support.dart';
 import '../application/trade_providers.dart';
 import '../domain/trade.dart';
 import 'trade_widgets.dart';
+import '../../ledger/presentation/ledger_screen.dart';
 
 class PartyListScreen extends ConsumerStatefulWidget {
   const PartyListScreen(this.kind, {super.key});
@@ -135,6 +136,14 @@ class PartyDetail extends ConsumerWidget {
                   child: Text(row[field] as String),
                 ),
             const SizedBox(height: 24),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => KhataScreen(kind, id)),
+              ),
+              icon: const Icon(Icons.menu_book_outlined),
+              label: const Text('View khata'),
+            ),
             if (row['is_walk_in'] != 1)
               FilledButton.icon(
                 onPressed: () => Navigator.push(

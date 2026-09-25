@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../../../core/money/money.dart';
+import '../../../core/permissions/permissions.dart';
 import '../../../core/numeric/scaled_integer.dart';
 import '../../../core/units/quantity.dart';
 import '../../../core/units/unit_conversion_service.dart';
@@ -427,6 +428,146 @@ class LocalTradeRepository {
     );
     return Money.sum(rows.map((r) => r['amount_delta_minor'] as int));
   }
+
+  Future<List<KhataAccount>> khata(PartyKind kind, String partyId) =>
+      db.transaction((tx) async {
+        final user = await auth.authorize(
+          tx,
+          kind == PartyKind.customer ? Permission.customers : Permission.ledger,
+        );
+        final party = await _party(tx, kind, user.shopId, partyId);
+        final current = currency(await _shop(tx, user.shopId));
+        final rows = await tx.select(
+          '''SELECT * FROM ${kind.ledger}
+      WHERE shop_id=? AND ${kind.key}=? AND status='posted'
+      ORDER BY occurred_at,created_at,rowid''',
+          [user.shopId, partyId],
+        );
+        final groups = <String, List<DataRow>>{
+          '${current.code}:${current.minorDigits}': [],
+        };
+        for (final row in rows) {
+          groups
+              .putIfAbsent(
+                '${row['currency_code']}:${row['currency_minor_digits']}',
+                () => [],
+              )
+              .add(row);
+        }
+        return groups.entries.map((group) {
+          final parts = group.key.split(':');
+          var balance = 0;
+          final entries = group.value.map((row) {
+            balance = Money.sum([balance, row['amount_delta_minor'] as int]);
+            return <String, Object?>{...row, 'running_balance': balance};
+          }).toList();
+          return KhataAccount(
+            party,
+            Currency(parts[0], minorDigits: int.parse(parts[1])),
+            entries,
+            balance,
+          );
+        }).toList();
+      });
+
+  Future<String> settle(
+    PartyKind kind,
+    String partyId, {
+    required Currency currency,
+    required String amountText,
+    required int expectedBalance,
+    required int occurredAt,
+    required String requestId,
+    String note = '',
+  }) => db.transaction((tx) async {
+    final user = await auth.authorize(
+      tx,
+      kind == PartyKind.customer
+          ? Permission.paymentCollection
+          : Permission.ledger,
+    );
+    _date(occurredAt);
+    final party = await _party(tx, kind, user.shopId, partyId);
+    if (party['is_walk_in'] == 1) {
+      throw const ValidationException('Walk-in sales are settled at issue.');
+    }
+    final paid = amount(amountText, currency);
+    if (paid <= 0) {
+      throw const ValidationException('Payment must be greater than zero.');
+    }
+    if (!RegExp(r'^[0-9a-f-]{36}$').hasMatch(requestId)) {
+      throw const ValidationException('Invalid payment request.');
+    }
+    final existing = await tx.select('SELECT * FROM payments WHERE id=?', [
+      requestId,
+    ]);
+    if (existing.isNotEmpty) {
+      final p = existing.single;
+      if (p['shop_id'] == user.shopId &&
+          p[kind.key] == partyId &&
+          p['amount_minor'] == paid &&
+          p['currency_code'] == currency.code &&
+          p['currency_minor_digits'] == currency.minorDigits &&
+          p['occurred_at'] == occurredAt &&
+          p['note'] == Validation.optional(note)) {
+        return requestId;
+      }
+      throw const ValidationException(
+        'Payment request already used. Reopen the account.',
+      );
+    }
+    final balance = await _balance(tx, kind, user.shopId, partyId, currency);
+    if (balance != expectedBalance) {
+      throw const ValidationException(
+        'Balance changed. Refresh the khata before paying.',
+      );
+    }
+    if (paid > balance) {
+      throw const ValidationException(
+        'Payment cannot exceed the outstanding balance.',
+      );
+    }
+    await RowWriter.insert(tx, 'payments', {
+      'id': requestId,
+      'shop_id': user.shopId,
+      ..._money(currency),
+      'status': 'posted',
+      'occurred_at': occurredAt,
+      'created_by': user.userId,
+      'posted_at': now(),
+      'posted_by': user.userId,
+      'direction': kind == PartyKind.customer ? 'incoming' : 'outgoing',
+      'method': 'cash',
+      'amount_minor': paid,
+      kind.key: partyId,
+      'note': Validation.optional(note),
+    }, now());
+    await _ledger(
+      tx,
+      user,
+      kind,
+      partyId,
+      currency,
+      -paid,
+      occurredAt,
+      Validation.optional(note) ?? 'Account payment',
+      paymentId: requestId,
+    );
+    await _audit(
+      tx,
+      user,
+      'payments',
+      requestId,
+      'settle_${kind.name}',
+      after: {
+        kind.key: partyId,
+        ..._money(currency),
+        'amount_minor': paid,
+        'balance_minor': balance - paid,
+      },
+    );
+    return requestId;
+  });
 
   Future<void> _ledger(
     SqlSession tx,

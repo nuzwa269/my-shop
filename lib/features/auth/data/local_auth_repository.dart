@@ -33,7 +33,7 @@ class LocalAuthRepository implements AuthRepository {
       JOIN shops h ON h.id=s.shop_id
       JOIN owner_credentials c ON c.user_id=u.id AND c.shop_id=u.shop_id
       WHERE s.token_hash=? AND s.status='active' AND s.expires_at>?
-      AND u.status='active' AND u.role='owner' AND h.status='active' AND c.status='active'
+      AND u.status='active' AND u.role IN ('owner','cashier') AND h.status='active' AND c.status='active'
       """,
       [await _digest(token), now()],
     );
@@ -43,7 +43,7 @@ class LocalAuthRepository implements AuthRepository {
       userId: row['id'] as String,
       shopId: row['shop_id'] as String,
       fullName: row['display_name'] as String,
-      role: ShopRole.owner,
+      role: ShopRole.values.byName(row['role'] as String),
       expiresAt: row['expires_at'] as int,
     );
   }
@@ -93,7 +93,7 @@ class LocalAuthRepository implements AuthRepository {
       if (row['status'] != 'active' ||
           row['user_status'] != 'active' ||
           row['shop_status'] != 'active' ||
-          row['role'] != 'owner') {
+          !['owner', 'cashier'].contains(row['role'])) {
         return null;
       }
       final valid = await hasher.verify(

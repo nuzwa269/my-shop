@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../database/database_provider.dart';
+import '../../../core/permissions/permissions.dart';
 import '../../../services/repository_providers.dart';
 import '../../auth/application/session_provider.dart';
 import '../../products/application/product_providers.dart';
@@ -13,6 +14,17 @@ final tradeRepositoryProvider = FutureProvider(
     await ref.watch(authRepositoryProvider.future),
   ),
 );
+
+final khataProvider =
+    FutureProvider.family<List<KhataAccount>, ({PartyKind kind, String id})>((
+      ref,
+      key,
+    ) async {
+      ref.watch(sessionProvider);
+      ref.watch(tradeRevisionProvider);
+      return (await ref.watch(tradeRepositoryProvider.future))
+          .khata(key.kind, key.id);
+    });
 
 class TradeRevision extends Notifier<int> {
   @override
@@ -61,6 +73,8 @@ final catalogProvider = FutureProvider.family<List<CatalogItem>, TradeKind>((
 ) async {
   ref.watch(sessionProvider);
   ref.watch(tradeRevisionProvider);
-  ref.watch(productListProvider((search: '', active: true)));
+  if (ref.watch(sessionProvider).asData?.value.owner?.role == ShopRole.owner) {
+    ref.watch(productListProvider((search: '', active: true)));
+  }
   return (await ref.watch(tradeRepositoryProvider.future)).catalog(kind);
 });

@@ -1,6 +1,56 @@
 ﻿# Project state
 
-## Current checkpoint - client demo: inventory
+## Current checkpoint - client-demo finalization
+
+Branch: `feature/client-demo-finalization`. Schema remains **3**; no released
+migrations, Phase 2, inventory or trade posting were rebuilt.
+
+Final host validation: `flutter analyze` PASS (no issues); `flutter test
+--reporter expanded` PASS (**73 tests**). Relevant module tests were run after each
+major addition. UI coverage includes optional seeding, both khata settlements,
+expense entry, staff creation/deactivation and restricted cashier navigation.
+
+`flutter build apk --debug`: **PASS**. Artifact:
+`build/app/outputs/flutter-apk/app-debug.apk` (191,967,342 bytes).
+SHA-256: `24EB26FD66F817F6909641120C8C08BCFAA2F20DC63B9C26B5D21FC8AEC74934`.
+The existing Android SDK XML-version warning was non-fatal. APK remains a local
+ignored build artifact; source, tests and documentation are committed on this
+branch. Do not merge into main automatically.
+
+Completed in this session, in the requested order:
+1. Customer khata: chronological posted entries, currency-separated running and
+   current balances, cash collection, stale-balance/overpayment rejection.
+2. Supplier khata: retained payable history and cash supplier payments with the
+   same atomicity, authorization and repeat-request protection.
+3. Expenses: positive cash expenses plus linked payment and audit in one transaction.
+   Posted records are immutable; expenses do not change stock or party ledgers.
+4. Staff: owner-created cashier accounts, activation/deactivation with session
+   revocation, common password hashing/lockout/expiration, restricted repositories
+   and navigation. The existing owner_credentials table name is retained for both
+   supported roles; existing owner credentials are untouched.
+5. Optional demo data: explicit owner confirmation, empty-shop checks inside one
+   transaction, no duplicate loading, no clear/reset, no seeded credentials.
+   Sample transactions use normal repositories and a shared SQL transaction.
+6. Dashboard: local-day posted totals, all-time account balances, stock counts,
+   module shortcuts and demo banner. Cashiers see their own daily sales only.
+7. Final Android debug APK built after passing analysis and the full test suite.
+
+Client-demo feature scope is implemented: suppliers, purchases, customers, sales,
+on-screen receipt/invoice, stock/inventory, both khatas, expenses, dashboard,
+owner/cashier access and optional sample data. See DEMO_WALKTHROUGH.md for setup,
+demo presentation steps and device checks. No production data was seeded here.
+
+Preserved invariants: integer money and quantities; currency/scale separation;
+exact conversions; append-only posted history; repository authorization; atomic
+posting. Account payments do not rewrite issued receipts or allocate against
+individual invoices. All payment workflows in this demo use cash.
+
+Physical Android runtime/secure-storage validation remains a device acceptance
+step, not established by host tests or compilation. Printing/export, cancellation,
+tax/costing, password recovery and advanced reports are not included. No cloud,
+Firebase, barcode, desktop runner or other out-of-scope feature was added.
+
+## Previous checkpoint - client demo: inventory
 
 Branch: `feature/client-demo-finalization`, created after switching to main and
 pulling GitHub main with `--ff-only`. Existing Phase 2/trade code retained.

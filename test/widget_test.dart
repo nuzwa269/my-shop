@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shop_manager/app.dart';
+import 'package:shop_manager/features/demo/presentation/demo_screen.dart';
+import 'package:shop_manager/features/ledger/presentation/ledger_screen.dart';
+import 'package:shop_manager/features/expenses/presentation/expenses_screen.dart';
+import 'package:shop_manager/features/auth/presentation/staff_screen.dart';
+import 'package:shop_manager/features/auth/data/local_staff_repository.dart';
 import 'package:shop_manager/database/database_provider.dart';
 import 'package:shop_manager/features/auth/application/session_provider.dart';
 import 'package:shop_manager/features/products/application/product_providers.dart';
@@ -81,7 +86,7 @@ void main() {
     );
     await tester.runAsync(() => tester.tap(find.text('Create shop')));
     await settleIo(tester);
-    expect(find.text('Owner login'), findsOneWidget);
+    expect(find.text('Shop login'), findsOneWidget);
     await enter(tester, 'Username or email', 'owner@example.com');
     await enter(tester, 'Password or PIN', 'owner-password');
     await tester.runAsync(() => tester.tap(find.text('Log in')));
@@ -106,7 +111,7 @@ void main() {
     );
     await tester.runAsync(() => tester.tap(find.text('Log out')));
     await settleIo(tester);
-    expect(find.text('Owner login'), findsOneWidget);
+    expect(find.text('Shop login'), findsOneWidget);
     expect(await tester.runAsync(store.shops.isConfigured), isTrue);
     expect(await tester.runAsync(store.auth.restore), isNull);
   });
@@ -175,7 +180,7 @@ void main() {
         container.dispose();
         await store.close();
       });
-      expect(find.text('Owner login'), findsOneWidget);
+      expect(find.text('Shop login'), findsOneWidget);
       expect(find.text('Set up your shop'), findsNothing);
       expect(find.text('Preview as owner'), findsNothing);
       expect(tester.takeException(), isNull);
@@ -199,14 +204,22 @@ void main() {
       await tester.tap(find.byTooltip('Open navigation menu'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.text(entry.key),
+        find.descendant(
+          of: find.byType(Drawer),
+          matching: find.text(entry.key),
+        ),
         150,
         scrollable: find.descendant(
           of: find.byType(Drawer),
           matching: find.byType(Scrollable),
         ),
       );
-      await tester.tap(find.text(entry.key));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(Drawer),
+          matching: find.text(entry.key),
+        ),
+      );
       await settleIo(tester);
       expect(find.text(entry.value), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -325,6 +338,163 @@ void main() {
     expect(find.text('opening stock'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('cashier dashboard and navigation hide owner modules', (
+    tester,
+  ) async {
+    final store = await tester.runAsync(() => TestStore.open());
+    await tester.runAsync(() async {
+      await LocalStaffRepository(
+        store!.db,
+        store.auth,
+        store.hasher,
+      ).create(name: 'Demo Cashier', username: 'cashier', password: '654321');
+      await store.auth.login('cashier', '654321');
+    });
+    final container = await mount(tester, store!);
+    addTearDown(() async {
+      container.dispose();
+      await store.close();
+    });
+    expect(find.text('Open sales'), findsOneWidget);
+    expect(find.text('Manage products'), findsNothing);
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sales'), findsOneWidget);
+    for (final label in [
+      'Purchases',
+      'Suppliers',
+      'Settings',
+      'Expenses',
+      'Inventory',
+    ]) {
+      expect(find.text(label), findsNothing);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'client demo UI loads samples, settles both khatas, records expense and manages cashier',
+    (tester) async {
+      final store = await tester.runAsync(() => TestStore.open());
+      final container = await mount(tester, store!);
+      addTearDown(() async {
+        container.dispose();
+        await store.close();
+      });
+      final navigator = Navigator.of(
+        tester.element(find.text('Manage products')),
+      );
+      navigator.push(
+        MaterialPageRoute<void>(builder: (_) => const DemoScreen()),
+      );
+      await settleIo(tester);
+      await tester.tap(find.text('Load demo data'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => tester.tap(find.text('Confirm')));
+      await settleIo(tester);
+      await tester.runAsync(() async {
+        final deadline = DateTime.now().add(const Duration(seconds: 15));
+        while (find
+                .text('Demo data is already loaded. It will not be duplicated.')
+                .evaluate()
+                .isEmpty &&
+            DateTime.now().isBefore(deadline)) {
+          await tester.pump();
+          await Future<void>.delayed(const Duration(milliseconds: 40));
+        }
+      });
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Demo data is already loaded. It will not be duplicated.'),
+        findsOneWidget,
+      );
+      navigator.pop();
+      await settleIo(tester);
+      for (final kind in [PartyKind.customer, PartyKind.supplier]) {
+        final rows = await tester.runAsync(
+          () => store.db.select(
+            'SELECT id FROM ${kind.table} WHERE name LIKE ?',
+            ['DEMO%'],
+          ),
+        );
+        final id = rows!.single['id'] as String;
+        navigator.push(
+          MaterialPageRoute<void>(builder: (_) => KhataScreen(kind, id)),
+        );
+        await settleIo(tester);
+        await tester.tap(
+          find.text(
+            kind == PartyKind.customer ? 'Receive payment' : 'Pay supplier',
+          ),
+        );
+        await tester.pumpAndSettle();
+        await enter(tester, 'Payment amount', '10');
+        await tester.scrollUntilVisible(
+          find.text('Record payment'),
+          150,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(find.text('Record payment'));
+        await tester.pumpAndSettle();
+        await tester.runAsync(() => tester.tap(find.text('Confirm')));
+        await settleIo(tester);
+        expect(find.text('${kind.label} khata'), findsOneWidget);
+        final accounts = await tester.runAsync(
+          () => LocalTradeRepository(store.db, store.auth).khata(kind, id),
+        );
+        expect(
+          accounts!.single.balance,
+          kind == PartyKind.customer ? 36000 : 1199000,
+        );
+        navigator.pop();
+        await settleIo(tester);
+      }
+      navigator.push(
+        MaterialPageRoute<void>(builder: (_) => const ExpenseEditor()),
+      );
+      await tester.pumpAndSettle();
+      await enter(tester, 'Category', 'Utilities');
+      await enter(tester, 'Description', 'Demo electricity');
+      await enter(tester, 'Amount', '100');
+      await tester.scrollUntilVisible(
+        find.text('Post expense'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Post expense'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => tester.tap(find.text('Confirm')));
+      await settleIo(tester);
+      expect(
+        await tester.runAsync(() => store.db.select('SELECT id FROM expenses')),
+        hasLength(2),
+      );
+      navigator.push(
+        MaterialPageRoute<void>(builder: (_) => const StaffScreen()),
+      );
+      await settleIo(tester);
+      await tester.tap(find.text('Add cashier'));
+      await tester.pumpAndSettle();
+      await enter(tester, 'Staff name', 'Client Cashier');
+      await enter(tester, 'Staff username', 'demo.cashier');
+      await enter(tester, 'Staff password or PIN', '654321');
+      await tester.scrollUntilVisible(
+        find.text('Create cashier'),
+        150,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.runAsync(() => tester.tap(find.text('Create cashier')));
+      await settleIo(tester);
+      expect(find.text('Client Cashier'), findsOneWidget);
+      await tester.tap(find.text('Deactivate'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => tester.tap(find.text('Confirm')));
+      await settleIo(tester);
+      expect(find.text('Reactivate'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('startup failures offer a non-destructive retry', (tester) async {
     var calls = 0;
