@@ -287,6 +287,45 @@ void main() {
     },
   );
 
+  testWidgets('inventory filters balances and opens posted movement history', (
+    tester,
+  ) async {
+    final store = await tester.runAsync(() => TestStore.open());
+    await tester.runAsync(() async {
+      await store!.products.save(
+        TestStore.product(name: 'Stocked rice', sku: 'RICE', minimum: '50000'),
+        opening: store.opening(quantity: '1'),
+      );
+      await store.products.save(
+        TestStore.product(name: 'Empty rice', sku: 'EMPTY'),
+      );
+    });
+    final container = await mount(tester, store!);
+    addTearDown(() async {
+      container.dispose();
+      await store.close();
+    });
+    Navigator.of(tester.element(find.text('Manage products')))
+        .pushReplacementNamed('/inventory');
+    await settleIo(tester);
+    expect(find.text('Stocked rice'), findsOneWidget);
+    expect(find.text('Empty rice'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Out of stock'));
+    await tester.pumpAndSettle();
+    expect(find.text('Stocked rice'), findsNothing);
+    expect(find.text('Empty rice'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Low stock'));
+    await tester.pumpAndSettle();
+    expect(find.text('Empty rice'), findsNothing);
+    await tester.tap(find.text('Stocked rice'));
+    await settleIo(tester);
+    expect(find.text('Stock movements'), findsOneWidget);
+    expect(find.text('Available: 50000.000000 gram'), findsOneWidget);
+    expect(find.text('Entered: 1.000000 bag'), findsOneWidget);
+    expect(find.text('opening stock'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('startup failures offer a non-destructive retry', (tester) async {
     var calls = 0;
     final store = await tester.runAsync(

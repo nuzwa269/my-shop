@@ -1,6 +1,37 @@
 ﻿# Project state
 
-## Current checkpoint - recovered MVP trade integration
+## Current checkpoint - client demo: inventory
+
+Branch: `feature/client-demo-finalization`, created after switching to main and
+pulling GitHub main with `--ff-only`. Existing Phase 2/trade code retained.
+
+Validation this session: `flutter analyze` PASS (no issues); `flutter test
+--reporter expanded` PASS (all 53 tests). Android APK is deferred until the remaining
+client-demo modules are ready. No merge into main is authorized for this session.
+
+This session completes the next unfinished module, stock/inventory:
+- Search by product name/SKU, low-stock/out-of-stock filters and inactive visibility.
+- Exact balances from the existing posted stock view; no mutable balance field.
+- Movement history retains original units, signed base quantities, dates, notes
+  and reversals. Includes opening stock, corrections, purchases and sales.
+- Inventory-authorized repository reads stay shop-scoped and transaction-scoped.
+- Riverpod refresh follows existing product/opening/trade invalidation, with manual
+  refresh/retry. No schema migration or stock-adjustment workflow was introduced.
+- Added repository tests for correction/trade history, stock thresholds, archived
+  products and authorization; added an inventory navigation/filter/history UI test.
+
+Client-demo module status (the user's current scope supersedes older scope notes):
+- Implemented: suppliers, purchases, customers, sales, on-screen receipt/invoice,
+  stock/inventory, owner login. Phase 2 and trade integration must not be repeated.
+- Next unfinished module: customer khata and supplier khata browsing, followed by
+  their payment workflows. Invoice/payment entries at issue already exist.
+- Still pending: expenses; cashier/staff account access; opt-in demo data; final
+  Android debug APK and device/secure-storage validation.
+- Dashboard exists with shop identity and active-product count; demo metrics and
+  shortcuts remain unfinished. Receipt printing/export is not implemented.
+- No cloud sync, Firebase, barcode, Windows app or advanced reports are in scope.
+
+## Previous checkpoint - recovered MVP trade integration
 
 Updated: 2026-09-25 after unexpected shutdown. Schema: **3**.
 The Phase 2 checkpoint below is historical; it predates the MVP files written at

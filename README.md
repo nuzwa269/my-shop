@@ -48,7 +48,9 @@ support item/unit selection, cash/credit/partial payment and receipt viewing.
 Sales support fixed discounts and reject insufficient stock; Walk-in Customer
 sales must be fully paid. Posted documents cannot be edited or cancelled in this MVP.
 
-Settings, Inventory, Khata browsing, Expenses and Reports remain placeholders. Shop
+Inventory shows exact stock balances, low/out-of-stock filters, name/SKU search,
+inactive products and posted movement history with original quantities/units.
+Settings, Khata browsing, Expenses and Reports remain placeholders. Shop
 profile editing, cashier accounts and general stock adjustments are not implemented.
 
 ## Architecture
